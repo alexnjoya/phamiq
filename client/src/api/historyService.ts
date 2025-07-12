@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export interface HistoryItem {
   id: string;
@@ -36,9 +36,9 @@ class HistoryService {
   // Get prediction history for the current user
   async getPredictionHistory(limit: number = 50): Promise<HistoryItem[]> {
     try {
-      console.log('Fetching history from:', `${API_BASE_URL}/history/?limit=${limit}`);
+      console.log('Fetching history from:', `${API_BASE_URL}/history/user?limit=${limit}`);
       
-      const response = await fetch(`${API_BASE_URL}/history/?limit=${limit}`, {
+      const response = await fetch(`${API_BASE_URL}/history/user?limit=${limit}`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),
@@ -53,7 +53,7 @@ class HistoryService {
         // If authentication fails, try the public endpoint
         if (response.status === 401 || response.status === 403) {
           console.log('Authentication failed, trying public endpoint...');
-          const publicResponse = await fetch(`${API_BASE_URL}/history/public`, {
+          const publicResponse = await fetch(`${API_BASE_URL}/history/public?limit=${limit}`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -63,7 +63,7 @@ class HistoryService {
           if (publicResponse.ok) {
             const publicData = await publicResponse.json();
             console.log('Public history data received:', publicData);
-            return publicData.sample_data.map((item: any) => ({
+            return publicData.map((item: any) => ({
               ...item,
               type: 'image',
             } as HistoryItem));

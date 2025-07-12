@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import VerticalSidebar from './VerticalSidebar';
 import MobileMenu from './upload/MobileMenu';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,8 +15,11 @@ const SidebarLayout: React.FC<SidebarLayoutProps> = ({ children }) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   
-  const navigate = (href: string) => { window.location.href = href; };
+  const handleNavigation = (href: string) => {
+    navigate(href);
+  };
   
   const handleLogout = () => {
     localStorage.clear();
@@ -54,7 +58,7 @@ const SidebarLayout: React.FC<SidebarLayoutProps> = ({ children }) => {
         isMobileMenuOpen={isMobileMenuOpen}
         setIsMobileMenuOpen={setIsMobileMenuOpen}
         sidebarItems={sidebarItems}
-        navigate={navigate}
+        navigate={handleNavigation}
         createOpen={createOpen}
         setCreateOpen={setCreateOpen}
         handleLogout={handleLogout}
@@ -66,7 +70,7 @@ const SidebarLayout: React.FC<SidebarLayoutProps> = ({ children }) => {
       <VerticalSidebar
         sidebarItems={sidebarItems}
         handleLogout={handleLogout}
-        navigate={navigate}
+        navigate={handleNavigation}
       />
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen md:ml-24 relative">

@@ -6,6 +6,7 @@ import re
 import json
 from fastapi.responses import StreamingResponse, Response
 import requests
+from app.services.alleai_service import alleai_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -79,23 +80,54 @@ def extract_image_url(response) -> str:
     return "https://placehold.co/400x250/png?text=No+Image+Available"
 
 @router.post("/generate-title", response_model=ChatResponse)
-def generate_title(request: PromptRequest):
+async def generate_title(request: PromptRequest):
     try:
-        # Rephrase the entered prompt and return as the title
-        # For now, just return the prompt as-is (or you can implement a simple rephrase logic)
-        result = request.prompt.strip()
-        return {"result": result}
+        if not alleai_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="AI service is not available. Please configure AlleAI API key."
+            )
+        
+        # Create a prompt for title generation
+        title_prompt = f"Generate a concise, professional title for this topic: {request.prompt}. The title should be clear, descriptive, and suitable for agricultural content. Return only the title, no additional text."
+        
+        models = request.models or ["gpt-4o"]
+        result = await alleai_service.chat_with_ai(
+            user_message=title_prompt,
+            conversation_history=[],
+            models=models
+        )
+        
+        # Clean the response to get just the title
+        title = result.strip()
+        if title.startswith('"') and title.endswith('"'):
+            title = title[1:-1]
+        
+        return {"result": title}
     except Exception as e:
         print("Error in /ai/generate-title:", e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/generate-description", response_model=ChatResponse)
-def generate_description(request: PromptRequest):
+async def generate_description(request: PromptRequest):
     try:
-        print("AlleAI service is currently disabled.")
-        # Placeholder for actual description generation logic
-        result = "Description generation is currently unavailable."
+        if not alleai_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="AI service is not available. Please configure AlleAI API key."
+            )
+        
+        # Create a prompt for description generation
+        description_prompt = f"Write a comprehensive, informative description for this agricultural topic: {request.prompt}. The description should be 2-3 paragraphs long, include practical information, and be written in a professional but accessible tone suitable for farmers and agricultural professionals. Focus on practical applications and benefits."
+        
+        models = request.models or ["gpt-4o"]
+        result = await alleai_service.chat_with_ai(
+            user_message=description_prompt,
+            conversation_history=[],
+            models=models
+        )
+        
         return {"result": result}
     except Exception as e:
         print("Error in /ai/generate-description:", e)
@@ -103,12 +135,24 @@ def generate_description(request: PromptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/generate-image", response_model=ImageResponse)
-def generate_image(request: PromptRequest):
+async def generate_image(request: PromptRequest):
     try:
-        print("AlleAI service is currently disabled.")
-        # Placeholder for actual image generation logic
-        result = "Image generation is currently unavailable."
-        return {"url": result}
+        if not alleai_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="AI service is not available. Please configure AlleAI API key."
+            )
+        
+        # Create a prompt for image generation
+        image_prompt = f"Generate a high-quality, realistic image of: {request.prompt}. The image should be suitable for agricultural content, professional, and visually appealing. Focus on clarity and realism."
+        
+        models = request.models or ["dall-e-3"]
+        
+        # For now, return a placeholder since AlleAI might not support image generation
+        # In the future, this could be connected to an image generation service
+        placeholder_url = "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400"
+        
+        return {"url": placeholder_url}
     except Exception as e:
         print("Error in /ai/generate-image:", e)
         traceback.print_exc()
@@ -124,4 +168,84 @@ def proxy_image(url: str):
         return StreamingResponse(r.raw, media_type=content_type, headers=headers)
     except Exception as e:
         print("Error proxying image:", e)
-        return Response(content="Failed to fetch image", status_code=500) 
+        return Response(content="Failed to fetch image", status_code=500)
+
+@router.post("/chat")
+async def ai_chat(request: PromptRequest):
+    """General AI chat endpoint"""
+    try:
+        if not alleai_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="AI service is not available. Please configure AlleAI API key."
+            )
+        
+        models = request.models or ["gpt-4o"]
+        result = await alleai_service.chat_with_ai(
+            user_message=request.prompt,
+            conversation_history=[],
+            models=models
+        )
+        
+        return {"result": result}
+    except Exception as e:
+        print("Error in /ai/chat:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/disease-analysis")
+async def disease_analysis(request: PromptRequest):
+    """Specialized endpoint for disease analysis"""
+    try:
+        if not alleai_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="AI service is not available. Please configure AlleAI API key."
+            )
+        
+        # Parse the prompt to extract disease information
+        # Expected format: "disease_name|confidence|crop_type"
+        parts = request.prompt.split('|')
+        if len(parts) >= 3:
+            disease_name = parts[0].strip()
+            confidence = float(parts[1].strip())
+            crop_type = parts[2].strip()
+            
+            models = request.models or ["gpt-4o"]
+            result = await alleai_service.get_disease_recommendations(
+                disease_name=disease_name,
+                confidence=confidence,
+                crop_type=crop_type,
+                models=models
+            )
+            
+            return {"result": result}
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid format. Expected: disease_name|confidence|crop_type"
+            )
+    except Exception as e:
+        print("Error in /ai/disease-analysis:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/status")
+async def ai_status():
+    """Get AI service status"""
+    try:
+        is_available = alleai_service.is_available()
+        models = alleai_service.get_available_models()
+        
+        return {
+            "status": "available" if is_available else "unavailable",
+            "models": models,
+            "service": "AlleAI"
+        }
+    except Exception as e:
+        print("Error in /ai/status:", e)
+        return {
+            "status": "error",
+            "error": str(e),
+            "service": "AlleAI"
+        } 

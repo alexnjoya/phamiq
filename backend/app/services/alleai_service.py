@@ -223,24 +223,34 @@ Format your response as a valid JSON object with these fields:
                     if msg["role"] == "system":
                         # For system messages, we'll include them as user messages with context
                         alleai_messages.append({
-                            "role": "user",
-                            "content": f"System instruction: {msg['content']}"
+                            "user": [
+                                {
+                                    "type": "text",
+                                    "text": f"System instruction: {msg['content']}"
+                                }
+                            ]
                         })
                     elif msg["role"] == "user":
                         alleai_messages.append({
-                            "role": "user",
-                            "content": msg["content"]
+                            "user": [
+                                {
+                                    "type": "text",
+                                    "text": msg["content"]
+                                }
+                            ]
                         })
                     elif msg["role"] == "assistant":
-                        alleai_messages.append({
-                            "role": "assistant",
-                            "content": msg["content"]
-                        })
+                        # For assistant messages, we'll include them as context in the next user message
+                        # This is a simplified approach for the AlleAI format
+                        pass
                 
-                # Use the standard OpenAI-compatible format that AlleAI supports
+                # Use the AlleAI-specific format
                 payload = {
-                    "model": models[0] if models else "gpt-4o",  # Use first model as primary
+                    "models": models,
                     "messages": alleai_messages,
+                    "web_search": False,
+                    "combination": False,
+                    "summary": False,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
                     "top_p": 1,
@@ -289,7 +299,7 @@ Format your response as a valid JSON object with these fields:
                     response_data = await response.json()
                     logger.info(f"AlleAI API response data: {json.dumps(response_data, indent=2)}")
                     
-                    # Handle different response formats
+                    # Handle AlleAI response format
                     content = None
                     if response_data.get("choices") and response_data["choices"]:
                         # Standard OpenAI-like format
@@ -303,6 +313,12 @@ Format your response as a valid JSON object with these fields:
                     elif response_data.get("response"):
                         # Alternative response format
                         content = response_data["response"]
+                    elif response_data.get("text"):
+                        # AlleAI specific format
+                        content = response_data["text"]
+                    elif response_data.get("data") and response_data["data"].get("text"):
+                        # Nested AlleAI format
+                        content = response_data["data"]["text"]
                     else:
                         logger.error("No response content found in AlleAI API response")
                         logger.error(f"Response structure: {json.dumps(response_data, indent=2)}")

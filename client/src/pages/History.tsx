@@ -18,9 +18,11 @@ import {
 } from "lucide-react";
 import SidebarLayout from '../components/SidebarLayout';
 import History from '../components/History';
+import { useAuth } from '../hooks/useAuth';
 
 const HistoryPage = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const sidebarItems = [
     { icon: Plus, label: "Analysis", href: "/upload" },

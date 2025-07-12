@@ -27,7 +27,7 @@ export interface ChatHistory {
   updated_at: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 class ChatService {
   private getAuthHeaders(): HeadersInit {
@@ -260,6 +260,25 @@ class ChatService {
       return await this.testConnection();
     } catch (error) {
       console.error('Chat service availability check failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Test if backend is reachable
+   * @returns Promise with connection status
+   */
+  async testBackendConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Backend connection test failed:', error);
       return false;
     }
   }

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { chatService, type Message, type ChatHistory } from "../api/chatService";
 import SidebarLayout from '../components/SidebarLayout';
+import { useAuth } from '../hooks/useAuth';
 
 // Types
 interface SidebarItem {
@@ -87,6 +88,7 @@ const Chat: React.FC = () => {
   
   // Navigation
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Sidebar configuration
   const sidebarItems: SidebarItem[] = [
@@ -126,13 +128,31 @@ const Chat: React.FC = () => {
 
   // Load chat history on mount
   useEffect(() => {
-    loadChatHistory();
-  }, []);
+    if (isAuthenticated && !authLoading) {
+      loadChatHistory();
+    }
+  }, [isAuthenticated, authLoading]);
 
   // Test chat connection on mount
   useEffect(() => {
     const testConnection = async () => {
+      // Only test connection if user is authenticated
+      if (!isAuthenticated || authLoading) {
+        return;
+      }
+      
       try {
+        // First test if backend is reachable
+        const isBackendReachable = await chatService.testBackendConnection();
+        if (!isBackendReachable) {
+          setChatState(prev => ({ 
+            ...prev, 
+            isConnected: false,
+            error: 'Backend server is not reachable. Please ensure the server is running on http://localhost:8000'
+          }));
+          return;
+        }
+        
         const isAvailable = await chatService.isAvailable();
         setChatState(prev => ({ 
           ...prev, 
@@ -150,7 +170,7 @@ const Chat: React.FC = () => {
     };
 
     testConnection();
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
@@ -553,6 +573,42 @@ What specific aspect of ${context.disease} management would you like to discuss?
       </div>
     );
   };
+
+  // Show loading state while authentication is being checked
+  if (authLoading) {
+    return (
+      <SidebarLayout>
+        <div className="flex-1 flex flex-col h-screen md:ml-24 relative">
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+              <p className="text-gray-500">Checking authentication...</p>
+            </div>
+          </div>
+        </div>
+      </SidebarLayout>
+    );
+  }
+
+  // Show authentication required message if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SidebarLayout>
+        <div className="flex-1 flex flex-col h-screen md:ml-24 relative">
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center max-w-md">
+              <Bot className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h2>
+              <p className="text-gray-600 mb-6">Please log in to access the AI chat assistant.</p>
+              <Button onClick={() => navigate('/login')} className="bg-teal-600 hover:bg-teal-700">
+                Go to Login
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SidebarLayout>
+    );
+  }
 
   return (
     <SidebarLayout>

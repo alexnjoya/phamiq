@@ -7,16 +7,18 @@
  */
 export async function askAiChat(userMessage: string, context?: string, models?: string[]): Promise<string> {
   try {
+    // Use the new AI chat endpoint
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    
     // Prepare the payload for the backend
     const payload = {
-      message: userMessage,
-      conversation_history: context ? [{ role: 'system', content: context }] : [],
+      prompt: userMessage,
       models: models || undefined,
     };
     
     console.log('Sending AI chat request:', { message: userMessage, models });
     
-    const res = await fetch('/chat/', {
+    const res = await fetch(`${API_BASE}/ai/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -33,11 +35,11 @@ export async function askAiChat(userMessage: string, context?: string, models?: 
     const data = await res.json();
     console.log('AI chat response:', data);
     
-    if (!data.success || !data.message) {
-      throw new Error(data.error || 'No AI response');
+    if (!data.result) {
+      throw new Error('No AI response received');
     }
     
-    return data.message;
+    return data.result;
   } catch (error) {
     console.error('AI chat error:', error);
     throw error;
@@ -52,8 +54,10 @@ export async function testAiChat(): Promise<any> {
   try {
     console.log('Testing AI chat functionality...');
     
-    const res = await fetch('/chat/test-chat', {
-      method: 'POST',
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    
+    const res = await fetch(`${API_BASE}/ai/status`, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -81,7 +85,9 @@ export async function testAiChat(): Promise<any> {
  */
 export async function getAvailableModels(): Promise<string[]> {
   try {
-    const res = await fetch('/chat/models', {
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+    
+    const res = await fetch(`${API_BASE}/ai/status`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -97,7 +103,7 @@ export async function getAvailableModels(): Promise<string[]> {
     const data = await res.json();
     console.log('Available models response:', data);
     
-    if (!data.status || data.status !== 'success' || !data.models) {
+    if (!data.status || data.status === 'error' || !data.models) {
       throw new Error(data.error || 'No models available');
     }
     

@@ -35,6 +35,7 @@ import {
 import SidebarLayout from '../components/SidebarLayout';
 import { discoveryService, TrendingDisease, Insight, DiseaseAlert } from '../api/discoveryService';
 import { toast } from 'sonner';
+import { useAuth } from '../hooks/useAuth';
 
 // Mock data for articles
 const mockArticles = [
@@ -52,6 +53,7 @@ const agriCategories = [
 
 const Discovery = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [trendingDiseases, setTrendingDiseases] = useState<TrendingDisease[]>([]);
@@ -79,12 +81,22 @@ const Discovery = () => {
   ];
 
   useEffect(() => {
-    fetchDiscoveryData();
-  }, [selectedCategory, selectedRegion]);
+    if (isAuthenticated && !authLoading) {
+      fetchDiscoveryData();
+    }
+  }, [selectedCategory, selectedRegion, isAuthenticated, authLoading]);
 
   const fetchDiscoveryData = async () => {
     try {
       setLoading(true);
+      
+      // First test if backend is reachable
+      const isBackendReachable = await discoveryService.testBackendConnection();
+      if (!isBackendReachable) {
+        toast.error('Backend server is not reachable. Please ensure the server is running on http://localhost:8000');
+        return;
+      }
+      
       const [diseasesData, insightsData, alertsData] = await Promise.all([
         discoveryService.getTrendingDiseases(10, selectedRegion !== 'all' ? selectedRegion : undefined),
         discoveryService.getInsights(selectedCategory !== 'all' ? selectedCategory : undefined, 10),
@@ -225,6 +237,42 @@ const Discovery = () => {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // Show loading state while authentication is being checked
+  if (authLoading) {
+    return (
+      <SidebarLayout>
+        <div className="flex-1 flex flex-col h-screen md:ml-24 relative">
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+              <p className="text-gray-500">Checking authentication...</p>
+            </div>
+          </div>
+        </div>
+      </SidebarLayout>
+    );
+  }
+
+  // Show authentication required message if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SidebarLayout>
+        <div className="flex-1 flex flex-col h-screen md:ml-24 relative">
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center max-w-md">
+              <Search className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Authentication Required</h2>
+              <p className="text-gray-600 mb-6">Please log in to access the discovery features.</p>
+              <Button onClick={() => navigate('/login')} className="bg-teal-600 hover:bg-teal-700">
+                Go to Login
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SidebarLayout>
     );
   }
 

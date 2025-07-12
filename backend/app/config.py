@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     DEBUG: bool = True
     # Hardcoded API key for development/testing
-    ALLEAI_API_KEY: str = os.getenv("ALLEAI_API_KEY", "alle-lAk4nhrUAHlKnAXKSBCHhwuP1KMsIrmlkkRW")
+    ALLEAI_API_KEY: str = "alle-m5iGU5J6cKxwMp6J0qAHmVXHmbCPNc6hhYY6"
     
    
     # Model Settings

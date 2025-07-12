@@ -1,6 +1,6 @@
 import { authService } from './authService';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL;
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export interface TrendingDisease {
   id: string;
@@ -56,6 +56,7 @@ class DiscoveryService {
 
       const response = await fetch(`${API_BASE_URL}/discovery/trending?${params}`, {
         method: 'GET',
+        
         headers: this.getAuthHeaders(),
       });
 
@@ -187,6 +188,25 @@ class DiscoveryService {
     } catch (error) {
       console.error('Error deleting insight:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Test if backend is reachable
+   * @returns Promise with connection status
+   */
+  async testBackendConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Backend connection test failed:', error);
+      return false;
     }
   }
 }

@@ -24,6 +24,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 interface HistoryProps {
   className?: string;
@@ -40,11 +41,14 @@ const History: React.FC<HistoryProps> = ({ className = '' }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [pendingDelete, setPendingDelete] = useState<HistoryListItem | null>(null);
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (isAuthenticated && !authLoading) {
+      loadHistory();
+    }
+  }, [isAuthenticated, authLoading]);
 
   const loadHistory = async () => {
     try {
@@ -181,6 +185,54 @@ const History: React.FC<HistoryProps> = ({ className = '' }) => {
     }
     return false;
   });
+
+  if (authLoading) {
+    return (
+      <div className={`space-y-6 ${className}`}>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900">Analysis History</h2>
+            <p className="text-gray-500 mt-1">Review your previous crop disease detections</p>
+          </div>
+        </div>
+
+        {/* Authentication Loading State */}
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">Checking authentication...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className={`space-y-6 ${className}`}>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900">Analysis History</h2>
+            <p className="text-gray-500 mt-1">Review your previous crop disease detections</p>
+          </div>
+        </div>
+
+        {/* Not Authenticated State */}
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-yellow-800 mb-2">Authentication Required</h3>
+            <p className="text-yellow-700 mb-4">Please log in to view your analysis history.</p>
+            <Button onClick={() => navigate('/login')} className="bg-yellow-600 hover:bg-yellow-700">
+              Go to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

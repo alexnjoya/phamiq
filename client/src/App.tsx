@@ -45,26 +45,10 @@ function App() {
             } />
             
             {/* Public Feature Routes */}
-            <Route path="/chat" element={
-              <Layout>
-                <Chat />
-              </Layout>
-            } />
-            <Route path="/history" element={
-              <Layout>
-                <History />
-              </Layout>
-            } />
-            <Route path="/discovery" element={
-              <Layout>
-                <Discovery />
-              </Layout>
-            } />
-            <Route path="/discovery/:id" element={
-              <Layout>
-                <DiscoveryDetails />
-              </Layout>
-            } />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/discovery" element={<Discovery />} />
+            <Route path="/discovery/:id" element={<DiscoveryDetails />} />
             
             {/* Protected Detection Routes */}
             <Route path="/upload" element={
