@@ -31,28 +31,7 @@ class ChatHistoryResponse(BaseModel):
     created_at: str
     updated_at: str
 
-@router.get("/")
-async def get_chat_info():
-    """Get chat service information and status"""
-    try:
-        logger.info("Chat info endpoint called")
-        
-        # Check if AlleAI service is available
-        is_available = alleai_service.is_available()
-        
-        return {
-            "status": "success",
-            "service": "Phamiq AI Chat",
-            "available": is_available,
-            "models": alleai_service.get_available_models() if is_available else [],
-            "message": "Chat service is ready" if is_available else "Chat service not configured"
-        }
-    except Exception as e:
-        logger.error(f"Error in chat info endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get chat info: {str(e)}"
-        )
+
 
 @router.get("/status")
 async def get_chat_status():

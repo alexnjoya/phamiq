@@ -5,9 +5,11 @@ import json
 from typing import Dict, Any, Optional, List
 from app.config import settings
 import asyncio
+import re
 
 logger = logging.getLogger(__name__)
 
+OPENROUTER_API_KEY = "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"
 
 class AlleAIService:
     """Enhanced service for handling AlleAI LLM interactions with agricultural expertise"""
@@ -37,13 +39,11 @@ class AlleAIService:
             logger.info(f"API Key format: {self.api_key[:10]}...{self.api_key[-4:] if len(self.api_key) > 14 else ''}")
     
     def is_available(self) -> bool:
-        """Check if AlleAI service is available"""
-        if not self.api_key:
-            logger.warning("AlleAI service disabled - no API key configured")
-            return False
-        
-        logger.info("✅ AlleAI service is available and ready")
-        return True
+        """Check if OpenRouter chat service is available (always True if OpenRouter key is set)"""
+        if OPENROUTER_API_KEY:
+            return True
+        logger.warning("OpenRouter API key not configured for chat.")
+        return False
     
     def clear_cache(self):
         """Clear the recommendations cache"""
@@ -108,7 +108,10 @@ class AlleAIService:
 - Use clear, helpful language that's easy to understand
 - Provide specific, actionable advice
 - Be friendly and supportive in your tone
-- Focus on practical solutions that farmers can implement immediately"""
+- Focus on practical solutions that farmers can implement immediately
+- Always return plain text responses, never JSON format
+- For title generation, return only the title as plain text
+- For description generation, return natural paragraphs as plain text"""
 
     def _get_disease_analysis_prompt(self, disease_name: str, confidence: float, crop_type: str) -> str:
         """Generate a specialized prompt for disease analysis"""
@@ -119,60 +122,30 @@ class AlleAIService:
 - Confidence Level: {confidence:.1%}
 - Crop Type: {crop_type}
 
-Please provide a comprehensive analysis with the following structure:
+Please provide a comprehensive analysis for {disease_name} affecting {crop_type} plants. 
 
-**1. Disease Overview**
-- Brief description of the disease
-- Common symptoms and identification markers
-- Conditions that favor disease development
+**IMPORTANT:** Return your response as a valid JSON object with this exact structure:
 
-**2. Immediate Action Plan**
-- First steps to take when this disease is detected
-- Isolation and containment measures
-- Emergency treatment options
-
-**3. Treatment Protocols**
-- Organic treatment methods
-- Chemical treatment options (if applicable)
-- Application timing and frequency
-- Safety precautions
-
-**4. Prevention Strategies**
-- Cultural practices to prevent recurrence
-- Environmental management
-- Crop rotation recommendations
-- Resistant variety suggestions
-
-**5. Monitoring and Follow-up**
-- Signs of improvement to watch for
-- Timeline for treatment effectiveness
-- When to seek professional help
-
-**6. Cost-Effective Solutions**
-- Budget-friendly treatment options
-- DIY solutions for small farms
-- Community resource recommendations
-
-Format your response as a valid JSON object with these fields:
 {{
-    "disease_overview": "Brief disease description and key symptoms",
-    "immediate_actions": "Step-by-step immediate response plan",
+    "disease_overview": "Detailed description of {disease_name}, its symptoms, and how it affects {crop_type} plants",
+    "immediate_actions": "Step-by-step immediate response plan for {disease_name}",
     "treatment_protocols": {{
-        "organic": "Organic treatment methods",
-        "chemical": "Chemical options if applicable",
-        "application": "How and when to apply treatments"
+        "organic": "Organic treatment methods for {disease_name}",
+        "chemical": "Chemical treatment options for {disease_name} if applicable",
+        "application": "How and when to apply treatments for {disease_name}"
     }},
-    "prevention": "Long-term prevention strategies",
-    "monitoring": "How to monitor progress and effectiveness",
-    "cost_effective": "Budget-friendly solutions",
-    "severity_level": "Low/Moderate/High based on disease type",
-    "professional_help": "When to consult agricultural experts"
+    "prevention": "Long-term prevention strategies for {disease_name}",
+    "monitoring": "How to monitor progress and effectiveness of treatments for {disease_name}",
+    "cost_effective": "Budget-friendly solutions for {disease_name}",
+    "severity_level": "Low/Moderate/High based on {disease_name}",
+    "professional_help": "When to consult agricultural experts for {disease_name}"
 }}
 
-**IMPORTANT:**
-- Respond ONLY with a valid JSON object matching the structure above.
-- Do NOT include any text, explanation, or markdown formatting before or after the JSON.
-- Only output the JSON object.
+**CRITICAL:** 
+- Respond ONLY with the JSON object above
+- Do NOT include any text before or after the JSON
+- Make the response specific to {disease_name} and {crop_type}
+- Provide practical, actionable advice for farmers
 """
     
     def _get_fallback_response(self, user_message: str) -> str:
@@ -217,32 +190,33 @@ Format your response as a valid JSON object with these fields:
             async with aiohttp.ClientSession() as session:
                 logger.info("Created aiohttp session")
                 
-                # Convert messages to AlleAI format
+                # Convert messages to AlleAI format - FIXED for AlleAI
                 alleai_messages = []
+                
+                # Combine system and user messages properly
+                system_content = ""
+                user_content = ""
+                
                 for msg in messages:
                     if msg["role"] == "system":
-                        # For system messages, we'll include them as user messages with context
-                        alleai_messages.append({
-                            "user": [
-                                {
-                                    "type": "text",
-                                    "text": f"System instruction: {msg['content']}"
-                                }
-                            ]
-                        })
+                        system_content += msg["content"] + "\n\n"
                     elif msg["role"] == "user":
-                        alleai_messages.append({
-                            "user": [
-                                {
-                                    "type": "text",
-                                    "text": msg["content"]
-                                }
-                            ]
-                        })
+                        user_content += msg["content"] + "\n"
                     elif msg["role"] == "assistant":
-                        # For assistant messages, we'll include them as context in the next user message
-                        # This is a simplified approach for the AlleAI format
-                        pass
+                        # For assistant messages, we'll include them as context
+                        user_content += f"Previous response: {msg['content']}\n"
+                
+                # Create the final user message with system context
+                final_user_content = system_content + user_content
+
+                alleai_messages.append({
+                    "user": [
+                        {
+                            "type": "text",
+                            "text": final_user_content.strip()
+                        }
+                    ]
+                })
                 
                 # Use the AlleAI-specific format
                 payload = {
@@ -260,6 +234,8 @@ Format your response as a valid JSON object with these fields:
                 }
                 
                 logger.info(f"Sending request to AlleAI API with payload: {json.dumps(payload, indent=2)}")
+                logger.info(f"API Key (first 10 chars): {self.api_key[:10] if self.api_key else 'None'}...")
+                logger.info(f"API URL: {self.api_url}")
                 
                 async with session.post(
                     url=self.api_url,
@@ -286,11 +262,14 @@ Format your response as a valid JSON object with these fields:
                     if not response.ok:
                         error_text = await response.text()
                         logger.error(f"AlleAI API error: {response.status} - {error_text}")
+                        logger.error(f"Request headers: {dict(response.request_info.headers)}")
+                        logger.error(f"API Key used: {self.api_key[:10] if self.api_key else 'None'}...")
                         
                         # Try to get more specific error information
                         try:
                             error_data = json.loads(error_text)
                             error_message = error_data.get('error', {}).get('message', error_text)
+                            logger.error(f"Parsed error message: {error_message}")
                         except:
                             error_message = error_text
                         
@@ -299,34 +278,45 @@ Format your response as a valid JSON object with these fields:
                     response_data = await response.json()
                     logger.info(f"AlleAI API response data: {json.dumps(response_data, indent=2)}")
                     
-                    # Handle AlleAI response format
+                    # Handle AlleAI response format - FIXED extraction
                     content = None
-                    if response_data.get("choices") and response_data["choices"]:
-                        # Standard OpenAI-like format
-                        content = response_data["choices"][0]["message"]["content"]
-                    elif response_data.get("message"):
-                        # Direct message format
-                        content = response_data["message"]
-                    elif response_data.get("content"):
-                        # Direct content format
-                        content = response_data["content"]
-                    elif response_data.get("response"):
-                        # Alternative response format
-                        content = response_data["response"]
-                    elif response_data.get("text"):
-                        # AlleAI specific format
-                        content = response_data["text"]
-                    elif response_data.get("data") and response_data["data"].get("text"):
-                        # Nested AlleAI format
-                        content = response_data["data"]["text"]
-                    else:
+                    
+                    # AlleAI typically returns in this format:
+                    # {"responses": {"responses": {"model_name": "response_text"}}}
+                    if isinstance(response_data, dict):
+                        if "responses" in response_data:
+                            responses_obj = response_data["responses"]
+                            if isinstance(responses_obj, dict) and "responses" in responses_obj:
+                                model_responses = responses_obj["responses"]
+                                if isinstance(model_responses, dict):
+                                    # Get the first model's response
+                                    for model_name, response_text in model_responses.items():
+                                        if isinstance(response_text, str) and response_text.strip():
+                                            content = response_text
+                                            break
+                    
+                    # Fallback to other possible formats
+                    if not content:
+                        if response_data.get("choices") and response_data["choices"]:
+                            # Standard OpenAI-like format
+                            content = response_data["choices"][0]["message"]["content"]
+                        elif response_data.get("message"):
+                            # Direct message format
+                            content = response_data["message"]
+                        elif response_data.get("content"):
+                            # Direct content format
+                            content = response_data["content"]
+                        elif response_data.get("response"):
+                            # Alternative response format
+                            content = response_data["response"]
+                        elif response_data.get("text"):
+                            # AlleAI specific format
+                            content = response_data["text"]
+                    
+                    if not content:
                         logger.error("No response content found in AlleAI API response")
                         logger.error(f"Response structure: {json.dumps(response_data, indent=2)}")
                         raise Exception("No response content from AlleAI API")
-                    
-                    if not content:
-                        logger.error("Empty response content from AlleAI API")
-                        raise Exception("Empty response content from AlleAI API")
                     
                     logger.info(f"Successfully received response from AlleAI API, content length: {len(content)}")
                     return self._clean_response(content)
@@ -355,18 +345,55 @@ Format your response as a valid JSON object with these fields:
     
     @staticmethod
     def _clean_response(text: str) -> str:
-        """Clean response while preserving Markdown formatting"""
-        # Remove special tokens but keep newlines and Markdown symbols
-        cleaned = text.replace("</s>", "").replace("<s>", "").strip()
-        # Collapse multiple newlines to two (for paragraph separation)
-        cleaned = "\n\n".join([line.strip() for line in cleaned.split("\n") if line.strip()])
-        return cleaned
+        """Ensure all AI responses are professional, human-readable, and never raw JSON."""
+        import json
+        import re
+        if not text:
+            return ""
+        text = text.strip()
+        # Remove code block markers
+        text = text.replace('```json', '').replace('```', '').strip()
+        # If the response is JSON, format it professionally
+        if text.startswith('{') and text.endswith('}'):
+            try:
+                data = json.loads(text)
+                if isinstance(data, dict):
+                    lines = []
+                    for key, value in data.items():
+                        pretty_key = key.replace('_', ' ').title()
+                        if isinstance(value, dict):
+                            lines.append(f"**{pretty_key}:**")
+                            for subkey, subval in value.items():
+                                lines.append(f"  - {subkey.replace('_', ' ').title()}: {subval}")
+                        elif isinstance(value, list):
+                            lines.append(f"**{pretty_key}:**")
+                            for item in value:
+                                lines.append(f"  - {item}")
+                        else:
+                            lines.append(f"**{pretty_key}:** {value}")
+                    return "\n".join(lines)
+            except Exception:
+                pass  # If JSON parsing fails, fall through to plain text
+        # Remove any remaining JSON-like artifacts
+        text = re.sub(r'\{[^}]*\}', '', text)
+        text = re.sub(r'\[[^\]]*\]', '', text)
+        text = re.sub(r'"[^"]*":\s*"[^"]*"', '', text)
+        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+        text = re.sub(r'^\s+|\s+$', '', text, flags=re.MULTILINE)
+        # Capitalize first letter, ensure professional tone
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
+        return text
 
     async def get_disease_recommendations(self, disease_name: str, confidence: float, crop_type: str, models: Optional[List[str]] = None) -> Dict[str, Any]:
         """Get comprehensive treatment, prevention, and immediate action recommendations for a disease"""
         
+        logger.info(f"Getting disease recommendations for {disease_name} ({confidence:.1%} confidence) on {crop_type}")
+        
         if not self.is_available():
-            raise Exception("LLM service is required but not available. Please configure AlleAI API key.")
+            logger.warning("LLM service not available, using fallback recommendations")
+            fallback_recommendations = self._get_structured_fallback_recommendations(disease_name, confidence, crop_type)
+            return fallback_recommendations
         
         # Create cache key
         cache_key = f"{disease_name}_{confidence}_{crop_type}"
@@ -376,7 +403,6 @@ Format your response as a valid JSON object with these fields:
             logger.info(f"Using cached recommendations for {disease_name}")
             return self._recommendations_cache[cache_key]
         
-        import re
         try:
             # Use the specialized disease analysis prompt
             prompt = self._get_disease_analysis_prompt(disease_name, confidence, crop_type)
@@ -388,25 +414,44 @@ Format your response as a valid JSON object with these fields:
                 }
             ]
             
+            logger.info(f"Making AlleAI request for disease analysis: {disease_name}")
             response_content = await self._make_alleai_request(
                 messages=messages, 
                 temperature=0.3, 
                 max_tokens=1200,
                 models=models
             )
+            
+            logger.info(f"Received response from AlleAI for {disease_name}")
+            logger.debug(f"Raw response: {response_content[:200]}...")
           
             try:
                 # Try to parse as JSON first
                 recommendations = json.loads(response_content)
-                logger.info(f"Generated LLM recommendations for {disease_name}")
+                logger.info(f"Successfully parsed JSON recommendations for {disease_name}")
+                
+                # Validate the recommendations structure
+                required_fields = ["disease_overview", "immediate_actions", "treatment_protocols", "prevention", "monitoring", "cost_effective", "severity_level", "professional_help"]
+                missing_fields = [field for field in required_fields if field not in recommendations]
+                
+                if missing_fields:
+                    logger.warning(f"Missing fields in LLM response: {missing_fields}")
+                    # Use fallback for missing fields
+                    fallback = self._get_structured_fallback_recommendations(disease_name, confidence, crop_type)
+                    for field in missing_fields:
+                        if field in fallback:
+                            recommendations[field] = fallback[field]
                 
                 # Cache the recommendations
                 self._recommendations_cache[cache_key] = recommendations
+                logger.info(f"Cached recommendations for {disease_name}")
                 
                 return recommendations
+                
             except json.JSONDecodeError as json_error:
                 logger.error(f"Failed to parse JSON response from LLM: {str(json_error)}")
                 logger.error(f"Raw response: {response_content}")
+                
                 # Try to extract JSON object using regex
                 match = re.search(r'\{[\s\S]*\}', response_content)
                 if match:
@@ -415,17 +460,28 @@ Format your response as a valid JSON object with these fields:
                         recommendations = json.loads(json_str)
                         logger.info(f"Extracted JSON from LLM response for {disease_name}")
                         
+                        # Validate and fill missing fields
+                        fallback = self._get_structured_fallback_recommendations(disease_name, confidence, crop_type)
+                        for field in fallback:
+                            if field not in recommendations:
+                                recommendations[field] = fallback[field]
+                        
                         # Cache the recommendations
                         self._recommendations_cache[cache_key] = recommendations
                         
                         return recommendations
                     except Exception as e2:
                         logger.error(f"Failed to parse extracted JSON: {str(e2)}")
-                raise Exception(f"Invalid LLM response format: {str(json_error)}. Raw: {response_content}")
+                
+                # If all JSON parsing fails, use fallback
+                logger.warning(f"Using fallback recommendations for {disease_name} due to JSON parsing failure")
+                fallback_recommendations = self._get_structured_fallback_recommendations(disease_name, confidence, crop_type)
+                self._recommendations_cache[cache_key] = fallback_recommendations
+                return fallback_recommendations
                 
         except Exception as e:
-            logger.error(f"Error getting LLM recommendations: {str(e)}")
-            logger.warning("Using fallback recommendations due to LLM failure")
+            logger.error(f"Error getting LLM recommendations for {disease_name}: {str(e)}")
+            logger.warning(f"Using fallback recommendations for {disease_name} due to LLM failure")
             fallback_recommendations = self._get_structured_fallback_recommendations(disease_name, confidence, crop_type)
             
             # Cache the fallback recommendations
@@ -435,94 +491,196 @@ Format your response as a valid JSON object with these fields:
 
     def _get_structured_fallback_recommendations(self, disease_name: str, confidence: float, crop_type: str) -> Dict[str, Any]:
         """Get structured fallback recommendations when LLM is unavailable"""
-        return {
-            "disease_overview": f"General information about {disease_name} affecting {crop_type}",
-            "immediate_actions": "1. Isolate affected plants\n2. Remove infected parts\n3. Improve air circulation\n4. Avoid overhead watering",
-            "treatment_protocols": {
-                "organic": "Apply neem oil or copper-based fungicides\nUse beneficial microbes\nImprove soil health",
-                "chemical": "Consult with agricultural extension for chemical options",
-                "application": "Apply treatments early morning or evening\nFollow label instructions carefully"
-            },
-            "prevention": "Use disease-resistant varieties\nPractice crop rotation\nMaintain proper spacing\nKeep tools clean",
-            "monitoring": "Check plants daily for new symptoms\nMonitor treatment effectiveness\nDocument progress",
-            "cost_effective": "Use homemade remedies like baking soda spray\nPractice good cultural methods\nJoin local farming groups for support",
-            "severity_level": "Moderate",
-            "professional_help": "Consult agricultural extension if symptoms worsen or spread rapidly"
-        }
+        
+        # Provide specific recommendations for common diseases
+        if "cashew_leafminer" in disease_name.lower():
+            return {
+                "disease_overview": f"{disease_name} is a serious pest that affects cashew trees by mining into the leaves, causing significant damage to the foliage and reducing photosynthesis. The larvae create serpentine mines in the leaves, which can lead to defoliation and reduced nut production.",
+                "immediate_actions": "1. Inspect all cashew trees for leafminer damage\n2. Remove and destroy heavily infested leaves\n3. Apply neem oil or insecticidal soap to affected areas\n4. Monitor surrounding trees for spread\n5. Consider introducing natural predators",
+                "treatment_protocols": {
+                    "organic": "Apply neem oil (2-3% solution) every 7-10 days\nUse Bacillus thuringiensis (Bt) spray\nIntroduce beneficial insects like parasitic wasps\nApply garlic or chili pepper spray as deterrent",
+                    "chemical": "Use spinosad-based insecticides\nApply abamectin if severe infestation\nUse systemic insecticides as last resort\nAlways follow label instructions",
+                    "application": "Apply treatments early morning or evening\nCover both sides of leaves thoroughly\nRepeat applications every 7-10 days\nAvoid spraying during flowering"
+                },
+                "prevention": "Plant cashew trees with adequate spacing\nMaintain good air circulation\nUse resistant cashew varieties when available\nPractice regular monitoring\nKeep area clean of fallen leaves\nApply preventive neem treatments",
+                "monitoring": "Check leaves weekly for mining damage\nMonitor for new leaf mines\nTrack treatment effectiveness\nDocument infestation levels\nWatch for natural predators",
+                "cost_effective": "Use homemade neem oil solutions\nPractice good cultural methods\nJoin local cashew farmer groups\nShare monitoring responsibilities with neighbors\nUse integrated pest management",
+                "severity_level": "High",
+                "professional_help": "Consult agricultural extension if more than 30% of leaves are affected or if treatments are not working after 2-3 applications"
+            }
+        elif "leaf" in disease_name.lower() and "miner" in disease_name.lower():
+            return {
+                "disease_overview": f"{disease_name} is a leaf-mining pest that creates tunnels in plant leaves, reducing photosynthesis and plant health. The larvae feed between the upper and lower leaf surfaces, creating visible serpentine mines.",
+                "immediate_actions": "1. Remove and destroy heavily mined leaves\n2. Apply neem oil or insecticidal soap\n3. Monitor for new mines\n4. Consider introducing natural predators\n5. Isolate severely affected plants",
+                "treatment_protocols": {
+                    "organic": "Apply neem oil (2-3% solution)\nUse Bacillus thuringiensis (Bt)\nIntroduce parasitic wasps\nApply garlic or chili pepper spray",
+                    "chemical": "Use spinosad-based products\nApply abamectin if needed\nUse systemic insecticides as last resort",
+                    "application": "Apply early morning or evening\nCover both leaf surfaces\nRepeat every 7-10 days\nAvoid flowering periods"
+                },
+                "prevention": "Maintain good plant spacing\nEnsure proper air circulation\nUse resistant varieties\nRegular monitoring\nClean up fallen leaves",
+                "monitoring": "Check leaves weekly for mines\nMonitor treatment effectiveness\nTrack natural predator presence\nDocument damage levels",
+                "cost_effective": "Use homemade neem solutions\nPractice cultural controls\nJoin farmer groups\nShare monitoring with neighbors",
+                "severity_level": "Moderate",
+                "professional_help": "Seek help if more than 25% of leaves are affected or treatments fail after 2-3 applications"
+            }
+        else:
+            return {
+                "disease_overview": f"General information about {disease_name} affecting {crop_type} plants. This disease can impact plant health and productivity.",
+                "immediate_actions": "1. Isolate affected plants\n2. Remove infected parts\n3. Improve air circulation\n4. Avoid overhead watering\n5. Use clean tools",
+                "treatment_protocols": {
+                    "organic": "Apply neem oil or copper-based fungicides\nUse beneficial microbes\nImprove soil health\nApply garlic or chili pepper spray",
+                    "chemical": "Consult with agricultural extension for chemical options\nUse appropriate fungicides or insecticides\nFollow label instructions carefully",
+                    "application": "Apply treatments early morning or evening\nCover all affected areas thoroughly\nRepeat as needed\nAvoid flowering periods"
+                },
+                "prevention": "Use disease-resistant varieties\nPractice crop rotation\nMaintain proper spacing\nKeep tools clean\nMonitor regularly",
+                "monitoring": "Check plants daily for new symptoms\nMonitor treatment effectiveness\nDocument progress\nWatch for natural predators",
+                "cost_effective": "Use homemade remedies like baking soda spray\nPractice good cultural methods\nJoin local farming groups\nShare monitoring responsibilities",
+                "severity_level": "Moderate",
+                "professional_help": "Consult agricultural extension if symptoms worsen or spread rapidly"
+            }
 
-    async def chat_with_ai(self, user_message: str, conversation_history: Optional[List[Dict[str, str]]] = None, models: Optional[List[str]] = None) -> str:
-        """Enhanced chat method with better context handling"""
+    async def chat_with_ai(self, user_message: str, conversation_history: Optional[List[dict]] = None, models: Optional[list] = None) -> str:
+        """Chat method using OpenRouter's OpenAI-compatible API for chat completions only, with extra_headers for referer and title."""
+        import asyncio
+        from openai import OpenAI
+
+        # Use OpenRouter API key and endpoint
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=OPENROUTER_API_KEY,
+        )
+
+        # Build messages array: system prompt, conversation history, user message
+        messages = []
+        messages.append({
+            "role": "system",
+            "content": self._get_agricultural_system_prompt()
+        })
+        if conversation_history:
+            messages.extend(conversation_history)
+        messages.append({
+            "role": "user",
+            "content": user_message
+        })
+
+        try:
+            # OpenRouter expects synchronous calls, so run in thread pool
+            loop = asyncio.get_event_loop()
+            completion = await loop.run_in_executor(
+                None,
+                lambda: client.chat.completions.create(
+                    extra_headers={
+                        "HTTP-Referer": "https://phamiq.ai/",
+                        "X-Title": "Phamiq AI"
+                    },
+                    model="openai/gpt-4o",
+                    messages=messages,
+                )
+            )
+            # Extract the assistant's response
+            content = completion.choices[0].message.content
+            return content
+        except Exception as e:
+            logger.error(f"Error in OpenRouter chat_with_ai: {str(e)}")
+            return self._get_fallback_response(user_message)
+
+    async def generate_image(self, prompt: str, models: Optional[List[str]] = None) -> str:
+        """Generate image using AlleAI image generation endpoint"""
+        
+        logger.info("=== NEW CODE VERSION - generate_image method called ===")
         
         if not self.is_available():
-            logger.warning("AlleAI service not available, using fallback response")
-            return self._get_fallback_response(user_message)
+            logger.warning("AlleAI service not available for image generation")
+            return "https://placehold.co/400x250/png?text=Image+Generation+Unavailable"
         
         try:
-            messages = []
+            from alleai.core import AlleAIClient
+            import json
             
-            # Add enhanced system prompt
-            messages.append({
-                "role": "system",
-                "content": self._get_agricultural_system_prompt()
+            # Initialize AlleAI client
+            client = AlleAIClient(api_key=self.api_key)
+            
+            # Set default models if none provided
+            if not models:
+                models = ["dall-e-3"]
+            
+            logger.info(f"Starting image generation with prompt: {prompt}")
+            logger.info(f"Using models: {models}")
+            
+            # Generate image
+            image_response = client.image.generate({
+                "models": models,
+                "prompt": prompt,
+                "n": 1,
+                "height": 1024,
+                "width": 1024,
+                "seed": 42,
+                "model_specific_params": {}
             })
             
-            # Add conversation history if provided
-            if conversation_history:
-                for msg in conversation_history:
-                    messages.append({
-                        "role": msg["role"],
-                        "content": msg["content"]
-                    })
+            logger.info(f"Image generation response type: {type(image_response)}")
+            logger.info(f"Image generation response: {image_response}")
             
-            # Add current user message
-            messages.append({
-                "role": "user",
-                "content": user_message
-            })
-            
-            logger.info(f"Chat request with {len(messages)} messages")
-            
-            response_content = await self._make_alleai_request(
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1000,
-                models=models
-            )
-            
-            # Ensure we return clean, natural text (not JSON)
-            cleaned_response = self._clean_response(response_content)
-            
-            # If the response looks like JSON, try to extract meaningful text
-            if cleaned_response.strip().startswith('{') and cleaned_response.strip().endswith('}'):
+            # Parse response if it's a string
+            if isinstance(image_response, str):
+                logger.info("✓ Response is a string, parsing as JSON")
                 try:
-                    # Try to parse and extract useful information
-                    json_data = json.loads(cleaned_response)
-                    if isinstance(json_data, dict):
-                        # Extract the most relevant field or combine multiple fields
-                        if 'disease_overview' in json_data:
-                            return json_data['disease_overview']
-                        elif 'immediate_actions' in json_data:
-                            return json_data['immediate_actions']
-                        elif 'treatment_protocols' in json_data:
-                            protocols = json_data['treatment_protocols']
-                            if isinstance(protocols, dict):
-                                return protocols.get('organic', '') + '\n\n' + protocols.get('chemical', '')
-                            return str(protocols)
-                        else:
-                            # Return the first string value found
-                            for value in json_data.values():
-                                if isinstance(value, str):
-                                    return value
-                except:
-                    # If JSON parsing fails, return the original response
-                    pass
+                    image_response = json.loads(image_response)
+                    logger.info("✓ Successfully parsed JSON response")
+                except json.JSONDecodeError as e:
+                    logger.error(f"✗ Failed to parse JSON response: {e}")
+                    return "https://placehold.co/400x250/png?text=Invalid+Response+Format"
             
-            return cleaned_response
+            # Direct extraction based on the JSON structure
+            try:
+                # Access the URL directly: responses.responses["dall-e-3"]
+                url = image_response["responses"]["responses"]["dall-e-3"]
+                if isinstance(url, str) and url.startswith("http"):
+                    logger.info(f"✓ SUCCESS: Direct extraction - Found image URL: {url}")
+                    return url
+                else:
+                    logger.warning(f"✗ Direct extraction failed - URL is not valid: {url}")
+            except (KeyError, TypeError) as e:
+                logger.warning(f"✗ Direct extraction failed with error: {e}")
+            
+            # Fallback: try the detailed extraction
+            if isinstance(image_response, dict):
+                logger.info("✓ Response is a dict")
+                if "responses" in image_response:
+                    logger.info("✓ Found 'responses' key in main response")
+                    responses_obj = image_response["responses"]
+                    logger.info(f"Responses object: {responses_obj}")
+                    
+                    if isinstance(responses_obj, dict) and "responses" in responses_obj:
+                        logger.info("✓ Found nested 'responses' key")
+                        model_responses = responses_obj["responses"]
+                        logger.info(f"Model responses: {model_responses}")
+                        
+                        if isinstance(model_responses, dict):
+                            logger.info("✓ Model responses is a dict")
+                            for model_name, url in model_responses.items():
+                                logger.info(f"Checking model '{model_name}': {url}")
+                                if isinstance(url, str) and url.startswith("http"):
+                                    logger.info(f"✓ SUCCESS: Found image URL for {model_name}: {url}")
+                                    return url
+                                else:
+                                    logger.warning(f"✗ URL for {model_name} is not valid: {url} (type: {type(url)})")
+                        else:
+                            logger.warning(f"✗ Model responses is not a dict: {type(model_responses)}")
+                    else:
+                        logger.warning(f"✗ No nested 'responses' key found in responses_obj: {list(responses_obj.keys()) if isinstance(responses_obj, dict) else 'Not a dict'}")
+                else:
+                    logger.warning(f"✗ No 'responses' key found in main response: {list(image_response.keys())}")
+            else:
+                logger.warning(f"✗ Response is not a dict: {type(image_response)}")
+            
+            logger.warning("FAILED: No image URL found in response")
+            logger.warning(f"Full response structure: {image_response}")
+            return "https://placehold.co/400x250/png?text=No+Image+Generated"
             
         except Exception as e:
-            logger.error(f"Error in chat_with_ai: {str(e)}")
-            logger.warning("Using fallback response due to AI service error")
-            return self._get_fallback_response(user_message)
+            logger.error(f"Error generating image: {str(e)}")
+            return "https://placehold.co/400x250/png?text=Image+Generation+Failed" 
 
 # Global service instance
-alleai_service = AlleAIService() 
+alleai_service = AlleAIService()

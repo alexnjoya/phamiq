@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { discoveryService, Insight } from '../api/discoveryService';
 import { Button } from '@/components/ui/button';
 import SidebarLayout from '../components/SidebarLayout';
+import { getImageUrl } from '../lib/utils';
 
 const DiscoveryDetails = () => {
   const { id } = useParams();
@@ -34,7 +35,7 @@ const DiscoveryDetails = () => {
       <div className="flex flex-col items-center min-h-screen bg-gray-50 pt-16">
         <div className="w-full max-w-2xl bg-white rounded-2xl shadow p-8 mt-8">
           {insight.image_url && (
-            <img src={insight.image_url} alt={insight.title} className="w-full h-64 object-cover rounded-lg mb-6 border" />
+            <img src={getImageUrl(insight.image_url)} alt={insight.title} className="w-full h-64 object-cover rounded-lg mb-6 border" />
           )}
           <div className="flex items-center gap-2 mb-2">
             <span className="inline-block bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full">{insight.category}</span>

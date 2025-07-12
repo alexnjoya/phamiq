@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     DEBUG: bool = True
-    # Hardcoded API key for development/testing
-    ALLEAI_API_KEY: str = "alle-m5iGU5J6cKxwMp6J0qAHmVXHmbCPNc6hhYY6"
+    # AlleAI API key - can be set via environment variable
+    ALLEAI_API_KEY: str = os.getenv("ALLEAI_API_KEY", "alle-m5iGU5J6cKxwMp6J0qAHmVXHmbCPNc6hhYY6")
     
    
     # Model Settings

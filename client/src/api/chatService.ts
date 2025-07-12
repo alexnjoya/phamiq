@@ -47,13 +47,26 @@ class ChatService {
    */
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/chat/test`, {
+      // First try the simple test endpoint that doesn't require auth
+      const response = await fetch(`${API_BASE_URL}/chat/test-simple`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        return true;
+      }
+      
+      // If simple test fails, try the authenticated endpoint
+      const authResponse = await fetch(`${API_BASE_URL}/chat/test`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      if (!authResponse.ok) {
+        const errorData = await authResponse.json().catch(() => ({}));
         console.error('Chat test failed:', errorData);
         return false;
       }
@@ -73,76 +86,41 @@ class ChatService {
    * @returns Promise with AI response and chat ID
    */
   async getAIResponse(
-    userMessage: string, 
-    conversationHistory: Message[] = [],
-    chatId?: string
-  ): Promise<{ message: string; chatId?: string }> {
+    userMessage: string
+  ): Promise<{ message: string }> {
     try {
-      console.log('Sending chat request:', {
-        message: userMessage,
-        historyLength: conversationHistory.length,
-        chatId
-      });
+      console.log('Sending AI chat request:', { message: userMessage });
 
-      const response = await fetch(`${API_BASE_URL}/chat/`, {
+      const response = await fetch(`${API_BASE_URL}/ai/chat`, {
         method: 'POST',
-        headers: this.getAuthHeaders(),
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          message: userMessage,
-          conversation_history: conversationHistory.map(msg => ({
-            role: msg.type === 'user' ? 'user' : 'assistant',
-            content: msg.content
-          })),
-          chat_id: chatId
+          prompt: userMessage
         }),
       });
 
-      console.log('Chat response status:', response.status);
+      console.log('AI chat response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        console.error('Chat API error:', errorData);
-        
-        if (response.status === 401) {
-          throw new Error('Authentication required. Please log in again.');
-        }
-        
-        if (response.status === 503) {
-          throw new Error('AI service is currently unavailable. Please try again later.');
-        }
-        
+        console.error('AI chat API error:', errorData);
         throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data: ChatResponse = await response.json();
-      console.log('Chat response data:', data);
+      const data = await response.json();
+      console.log('AI chat response data:', data);
       
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to get AI response');
-      }
-
-      if (!data.message) {
+      if (!data.result) {
         throw new Error('No response content received from AI');
       }
 
       return {
-        message: data.message,
-        chatId: data.chat_id
+        message: data.result
       };
     } catch (error) {
-      console.error('Error getting AI response:', error);
-      
-      // Re-throw authentication errors
-      if (error instanceof Error && error.message.includes('Authentication')) {
-        throw error;
-      }
-      
-      // Re-throw service unavailable errors
-      if (error instanceof Error && error.message.includes('unavailable')) {
-        throw error;
-      }
-      
-      // Provide a fallback response for other errors
+      console.error('Error getting AI chat response:', error);
       throw new Error('Failed to get AI response. Please try again.');
     }
   }
@@ -270,13 +248,27 @@ class ChatService {
    */
   async testBackendConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      // Test the health endpoint
+      const healthResponse = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
       });
-      return response.ok;
+      
+      if (!healthResponse.ok) {
+        return false;
+      }
+      
+      // Test the chat service status using the status endpoint
+      const chatResponse = await fetch(`${API_BASE_URL}/chat/status`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      return chatResponse.ok;
     } catch (error) {
       console.error('Backend connection test failed:', error);
       return false;

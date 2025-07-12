@@ -1,41 +1,24 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Bot,
-  History,
-  Settings,
-  Plus,
-  Search,
-  TrendingUp,
-  Users,
-  BookOpen,
-  ArrowUpRight,
-  ExternalLink,
-  AlertTriangle,
-  Clock,
-  MapPin,
-  Calendar,
-  Eye,
-  Filter,
-  Globe,
-  Leaf,
-  Shield,
-  Activity,
-  ChevronRight,
-  Star,
-  BarChart3,
-  Newspaper,
-  Edit3
-} from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import SidebarLayout from '../components/SidebarLayout';
+import { Button } from '../components/ui/button';
+import { Badge } from '../components/ui/badge';
+import { 
+  Plus, 
+  History as HistoryIcon, 
+  Bot,
+  Search, 
+  Settings,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
+  User,
+  LogOut
+} from 'lucide-react';
 import { discoveryService, TrendingDisease, Insight, DiseaseAlert } from '../api/discoveryService';
 import { toast } from 'sonner';
 import { useAuth } from '../hooks/useAuth';
+import { getImageUrl } from '../lib/utils';
 
 // Mock data for articles
 const mockArticles = [
@@ -73,11 +56,12 @@ const Discovery = () => {
 
   const sidebarItems = [
     { icon: Plus, label: "Analysis", href: "/upload" },
-    { icon: History, label: "History", href: "/history" },
+    { icon: HistoryIcon, label: "History", href: "/history" },
     { icon: Bot, label: "Chat", href: "/chat" },
     { icon: Search, label: "Discovery", href: "/discovery", active: true },
-    { icon: Edit3, label: "Create", href: "/profile" },
+    { icon: User, label: "Profile", href: "/profile" },
     { icon: Settings, label: "Settings", href: "/settings" },
+    { icon: LogOut, label: "Logout", href: "/logout" }
   ];
 
   useEffect(() => {
@@ -220,7 +204,7 @@ const Discovery = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center pt-16">
         <div className="w-full max-w-3xl bg-white rounded-2xl overflow-hidden mt-8">
-          <img src={article.image} alt={article.title} className="w-full h-72 object-cover" />
+          <img src={getImageUrl(article.image)} alt={article.title} className="w-full h-72 object-cover" />
           <div className="p-8">
             <div className="flex items-center gap-2 mb-2">
               <span className="inline-block bg-green-100 text-green-700 text-xs px-3 py-1 rounded-full">{article.category}</span>
@@ -332,7 +316,7 @@ const Discovery = () => {
               <div className="w-full bg-white flex flex-col overflow-hidden mb-2">
                 {filteredInsights[0].image_url && (
                   <div className="w-full aspect-[16/9] bg-gray-100 flex items-center justify-center overflow-hidden">
-                    <img src={filteredInsights[0].image_url} alt={filteredInsights[0].title} className="w-full h-full object-cover" />
+                    <img src={getImageUrl(filteredInsights[0].image_url)} alt={filteredInsights[0].title} className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div className="flex-1 pt-6 pb-2 px-0 flex flex-col justify-between items-start text-left">
@@ -362,7 +346,7 @@ const Discovery = () => {
                   <div key={insight.id} className="flex-shrink-0 w-72 bg-white flex flex-col overflow-hidden">
                     {insight.image_url && (
                       <div className="w-full aspect-[16/9] bg-gray-100 flex items-center justify-center overflow-hidden">
-                        <img src={insight.image_url} alt={insight.title} className="w-full h-full object-cover" />
+                        <img src={getImageUrl(insight.image_url)} alt={insight.title} className="w-full h-full object-cover" />
                       </div>
                     )}
                     <div className="flex-1 pt-4 pb-2 px-0 flex flex-col justify-between items-start text-left">

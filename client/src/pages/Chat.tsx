@@ -30,7 +30,7 @@ import {
   Calendar,
   FileText
 } from "lucide-react";
-import { chatService, type Message, type ChatHistory } from "../api/chatService";
+import { chatService, type Message, type ChatHistory, type ChatContext } from "./chatservice";
 import SidebarLayout from '../components/SidebarLayout';
 import { useAuth } from '../hooks/useAuth';
 
@@ -46,16 +46,6 @@ interface ChatState {
   isLoading: boolean;
   error: string | null;
   isConnected: boolean;
-}
-
-interface ChatContext {
-  disease: string;
-  cropType: string;
-  confidence: number;
-  severity: string;
-  filename?: string;
-  created_at?: string;
-  image_url?: string;
 }
 
 const Chat: React.FC = () => {
@@ -142,13 +132,13 @@ const Chat: React.FC = () => {
       }
       
       try {
-        // First test if backend is reachable
+        // First test if API is reachable
         const isBackendReachable = await chatService.testBackendConnection();
         if (!isBackendReachable) {
           setChatState(prev => ({ 
             ...prev, 
             isConnected: false,
-            error: 'Backend server is not reachable. Please ensure the server is running on http://localhost:8000'
+            error: 'Backend server is not reachable. Please ensure you have an internet connection.'
           }));
           return;
         }
@@ -362,23 +352,8 @@ What specific aspect of ${context.disease} management would you like to discuss?
     setChatState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      // Get conversation history (excluding the initial bot greeting)
-      let conversationHistory = messages.slice(1);
-      
-      // If we have disease context, add it to the conversation history for context awareness
-      if (chatContext && conversationHistory.length === 0) {
-        // Add a context message to remind the AI about the specific disease analysis
-        const contextMessage: Message = {
-          id: Date.now() - 1,
-          type: "bot",
-          content: `Context: We are discussing ${chatContext.disease} in ${chatContext.cropType} crops. Severity: ${chatContext.severity}, Confidence: ${(chatContext.confidence * 100).toFixed(0)}%. Please provide specific advice for this disease and crop combination.`,
-          timestamp: new Date()
-        };
-        conversationHistory = [contextMessage];
-      }
-      
       // Get AI response
-      const response = await chatService.getAIResponse(userMessage.content, conversationHistory, currentChatId || undefined);
+      const response = await chatService.getAIResponse(userMessage.content);
       
       // Add bot response
       const botMessage: Message = {
@@ -390,12 +365,6 @@ What specific aspect of ${context.disease} management would you like to discuss?
       
       setMessages(prev => [...prev, botMessage]);
       setChatState(prev => ({ ...prev, isConnected: true }));
-      
-      // Update current chat ID if this is a new conversation
-      if (response.chatId && !currentChatId) {
-        setCurrentChatId(response.chatId);
-        await loadChatHistory(); // Refresh history
-      }
       
     } catch (error) {
       console.error('Error sending message:', error);
@@ -437,7 +406,7 @@ What specific aspect of ${context.disease} management would you like to discuss?
     } finally {
       setChatState(prev => ({ ...prev, isLoading: false }));
     }
-  }, [message, chatState.isLoading, messages, navigate, currentChatId, chatContext]);
+  }, [message, chatState.isLoading, navigate]);
 
   // Handle keyboard events
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -475,13 +444,14 @@ What specific aspect of ${context.disease} management would you like to discuss?
     return (
       <div className="space-y-4">
         {paragraphs.map((paragraph, index) => {
-          // Check if this is the main heading paragraph (first paragraph)
-          if (index === 0 && !paragraph.match(/^\d+\.\s/)) {
+          // Check if this is a heading (starts with ** and ends with **)
+          if (paragraph.match(/^\*\*.*\*\*$/)) {
+            const heading = paragraph.replace(/\*\*(.*?)\*\*/g, '$1');
             return (
-              <div key={index} className="space-y-3">
-                <h2 className="text-lg font-bold text-gray-900 leading-relaxed">
-                  {paragraph.replace(/\*\*(.*?)\*\*/g, '$1')}
-                </h2>
+              <div key={index} className="space-y-2">
+                <h3 className="text-lg font-bold text-gray-900 leading-relaxed">
+                  {heading}
+                </h3>
               </div>
             );
           }
@@ -525,7 +495,7 @@ What specific aspect of ${context.disease} management would you like to discuss?
             );
           }
           
-          // Check if paragraph contains bullet points
+          // Check if paragraph contains bullet points with headings
           if (paragraph.includes('**') && paragraph.includes(':')) {
             const [title, ...points] = paragraph.split('\n');
             const cleanTitle = title.replace(/\*\*(.*?)\*\*/g, '$1');
@@ -563,10 +533,67 @@ What specific aspect of ${context.disease} management would you like to discuss?
             );
           }
           
+          // Check if paragraph contains bullet points (starts with • or -)
+          if (paragraph.match(/^[•\-]\s/)) {
+            const lines = paragraph.split('\n');
+            const listItems = lines.filter(line => line.trim());
+            
+            return (
+              <div key={index} className="space-y-2">
+                <ul className="list-disc list-inside space-y-1 ml-4">
+                  {listItems.map((item, itemIndex) => {
+                    const cleanItem = item.replace(/^[•\-]\s/, '').replace(/\*\*(.*?)\*\*/g, '$1');
+                    const colonIndex = cleanItem.indexOf(':');
+                    
+                    if (colonIndex !== -1) {
+                      const label = cleanItem.substring(0, colonIndex + 1);
+                      const description = cleanItem.substring(colonIndex + 1);
+                      
+                      return (
+                        <li key={itemIndex} className="text-gray-700 text-sm leading-relaxed">
+                          <span className="font-semibold text-gray-900">{label}</span>
+                          {description}
+                        </li>
+                      );
+                    } else {
+                      return (
+                        <li key={itemIndex} className="text-gray-700 text-sm leading-relaxed">
+                          {cleanItem}
+                        </li>
+                      );
+                    }
+                  })}
+                </ul>
+              </div>
+            );
+          }
+          
+          // Check if paragraph contains inline bold text
+          if (paragraph.includes('**')) {
+            const parts = paragraph.split(/\*\*(.*?)\*\*/);
+            return (
+              <p key={index} className="text-gray-700 text-sm leading-relaxed">
+                {parts.map((part, partIndex) => {
+                  if (partIndex % 2 === 1) {
+                    // This is bold text
+                    return (
+                      <span key={partIndex} className="font-semibold text-gray-900">
+                        {part}
+                      </span>
+                    );
+                  } else {
+                    // This is regular text
+                    return part;
+                  }
+                })}
+              </p>
+            );
+          }
+          
           // Regular paragraph
           return (
             <p key={index} className="text-gray-700 text-sm leading-relaxed">
-              {paragraph.replace(/\*\*(.*?)\*\*/g, '$1')}
+              {paragraph}
             </p>
           );
         })}
@@ -614,7 +641,7 @@ What specific aspect of ${context.disease} management would you like to discuss?
     <SidebarLayout>
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen md:ml-24 relative">
-          {/* Header */}
+        {/* Header */}
         <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -630,7 +657,7 @@ What specific aspect of ${context.disease} management would you like to discuss?
                   <span className="text-sm text-gray-500">
                     {chatState.isConnected ? 'Connected' : 'Disconnected'}
                   </span>
-            </div>
+                </div>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -704,8 +731,8 @@ What specific aspect of ${context.disease} management would you like to discuss?
                 )}
               </div>
             </div>
-            </div>
-          )}
+          </div>
+        )}
 
         {/* Enhanced Disease Context Banner */}
         {chatContext && showContextDetails && (
@@ -905,33 +932,33 @@ What specific aspect of ${context.disease} management would you like to discuss?
                         </div>
                       </div>
                     </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-            
-            {/* Loading indicator */}
-            {chatState.isLoading && (
-              <div className="flex justify-start">
+              ))}
+              
+              {/* Loading indicator */}
+              {chatState.isLoading && (
+                <div className="flex justify-start">
                   <div className="max-w-[85%]">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <Bot className="w-4 h-4 text-gray-600" />
-                  </div>
+                      </div>
                       <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3">
-                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 text-gray-500 animate-spin" />
                           <span className="text-sm text-gray-600">AI is thinking...</span>
                         </div>
                       </div>
                     </div>
                   </div>
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
             </div>
           </div>
-          </div>
+        </div>
 
         {/* Input Container */}
         <div className="bg-white border-t border-gray-200">
@@ -952,7 +979,7 @@ What specific aspect of ${context.disease} management would you like to discuss?
                 disabled={!message.trim() || chatState.isLoading}
                 className="absolute right-2 top-1/2 transform -translate-y-1/2 w-8 h-8 p-0 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                  <Send className="w-4 h-4" />
+                <Send className="w-4 h-4" />
               </Button>
             </div>
             <p className="text-xs text-gray-500 mt-2 text-center">

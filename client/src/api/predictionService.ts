@@ -60,7 +60,10 @@ export class PredictionService {
 
       const response = await fetch(`${API_BASE_URL}/predict/?top_k=${topK}`, {
         method: 'POST',
-        headers: this.getAuthHeaders(),
+        headers: {
+          ...this.getAuthHeaders(),
+          // Don't set Content-Type for FormData, let browser set it
+        },
         body: formData,
       });
 

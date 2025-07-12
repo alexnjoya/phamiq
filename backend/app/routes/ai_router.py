@@ -79,6 +79,61 @@ def extract_image_url(response) -> str:
     print("Extracted image URL: (placeholder)")
     return "https://placehold.co/400x250/png?text=No+Image+Available"
 
+def clean_text_response(text: str) -> str:
+    """Clean text response to ensure it's natural text without JSON formatting"""
+    if not text:
+        return ""
+    
+    text = text.strip()
+    
+    # Remove quotes if the entire response is quoted
+    if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+        text = text[1:-1]
+    
+    # If it looks like JSON, try to extract the actual content
+    if text.startswith('{') and text.endswith('}'):
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                # Look for common text fields
+                for key in ['title', 'text', 'content', 'message', 'response', 'result', 'description']:
+                    if key in data and isinstance(data[key], str):
+                        return data[key].strip()
+                
+                # If no text field found, try to format the content nicely
+                formatted_parts = []
+                for key, value in data.items():
+                    if isinstance(value, str) and value.strip():
+                        # Format the key as a heading
+                        formatted_key = key.replace('_', ' ').title()
+                        formatted_parts.append(f"**{formatted_key}:**\n{value}")
+                
+                if formatted_parts:
+                    return '\n\n'.join(formatted_parts)
+                
+                # If no string values found, return the first non-string value
+                for value in data.values():
+                    if value:
+                        return str(value)
+        except json.JSONDecodeError:
+            pass
+    
+    # Clean up common AI response artifacts
+    text = text.replace('```json', '').replace('```', '').strip()
+    text = text.replace('**', '**')  # Ensure markdown formatting is preserved
+    
+    # Remove any remaining JSON artifacts
+    import re
+    text = re.sub(r'\{[^}]*\}', '', text)  # Remove JSON objects
+    text = re.sub(r'\[[^\]]*\]', '', text)  # Remove JSON arrays
+    text = re.sub(r'"[^"]*":\s*"[^"]*"', '', text)  # Remove JSON key-value pairs
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)  # Remove excessive line breaks
+    text = re.sub(r'^\s+|\s+$', '', text, flags=re.MULTILINE)  # Remove leading/trailing whitespace
+    
+    return text
+
 @router.post("/generate-title", response_model=ChatResponse)
 async def generate_title(request: PromptRequest):
     try:
@@ -89,7 +144,7 @@ async def generate_title(request: PromptRequest):
             )
         
         # Create a prompt for title generation
-        title_prompt = f"Generate a concise, professional title for this topic: {request.prompt}. The title should be clear, descriptive, and suitable for agricultural content. Return only the title, no additional text."
+        title_prompt = f"Generate a concise, professional title for this topic: {request.prompt}. The title should be clear, descriptive, and suitable for agricultural content. Return ONLY the title as plain text, no JSON formatting, no quotes, no additional text, no markdown."
         
         models = request.models or ["gpt-4o"]
         result = await alleai_service.chat_with_ai(
@@ -99,9 +154,7 @@ async def generate_title(request: PromptRequest):
         )
         
         # Clean the response to get just the title
-        title = result.strip()
-        if title.startswith('"') and title.endswith('"'):
-            title = title[1:-1]
+        title = clean_text_response(result)
         
         return {"result": title}
     except Exception as e:
@@ -119,7 +172,7 @@ async def generate_description(request: PromptRequest):
             )
         
         # Create a prompt for description generation
-        description_prompt = f"Write a comprehensive, informative description for this agricultural topic: {request.prompt}. The description should be 2-3 paragraphs long, include practical information, and be written in a professional but accessible tone suitable for farmers and agricultural professionals. Focus on practical applications and benefits."
+        description_prompt = f"Write a comprehensive, informative description for this agricultural topic: {request.prompt}. The description should be 2-3 paragraphs long, include practical information, and be written in a professional but accessible tone suitable for farmers and agricultural professionals. Focus on practical applications and benefits. Return the description as natural text with proper formatting, no JSON, no markdown, just well-structured paragraphs."
         
         models = request.models or ["gpt-4o"]
         result = await alleai_service.chat_with_ai(
@@ -128,7 +181,10 @@ async def generate_description(request: PromptRequest):
             models=models
         )
         
-        return {"result": result}
+        # Clean the response to ensure it's plain text
+        description = clean_text_response(result)
+        
+        return {"result": description}
     except Exception as e:
         print("Error in /ai/generate-description:", e)
         traceback.print_exc()
@@ -148,11 +204,12 @@ async def generate_image(request: PromptRequest):
         
         models = request.models or ["dall-e-3"]
         
-        # For now, return a placeholder since AlleAI might not support image generation
-        # In the future, this could be connected to an image generation service
-        placeholder_url = "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400"
+        # Use the new image generation method
+        image_url = await alleai_service.generate_image(image_prompt, models)
+        if not image_url or not isinstance(image_url, str):
+            image_url = "https://placehold.co/400x250/png?text=No+Image+Generated"
         
-        return {"url": placeholder_url}
+        return {"url": image_url}
     except Exception as e:
         print("Error in /ai/generate-image:", e)
         traceback.print_exc()
@@ -180,14 +237,20 @@ async def ai_chat(request: PromptRequest):
                 detail="AI service is not available. Please configure AlleAI API key."
             )
         
+        # Enhance the prompt to request natural text responses
+        enhanced_prompt = f"{request.prompt}\n\nPlease provide a natural, conversational response. Use proper formatting with paragraphs, bullet points where appropriate, and clear explanations. Avoid JSON formatting or technical jargon unless specifically requested."
+        
         models = request.models or ["gpt-4o"]
         result = await alleai_service.chat_with_ai(
-            user_message=request.prompt,
+            user_message=enhanced_prompt,
             conversation_history=[],
             models=models
         )
         
-        return {"result": result}
+        # Clean the response to ensure it's natural text
+        cleaned_result = clean_text_response(result)
+        
+        return {"result": cleaned_result}
     except Exception as e:
         print("Error in /ai/chat:", e)
         traceback.print_exc()
@@ -248,4 +311,35 @@ async def ai_status():
             "status": "error",
             "error": str(e),
             "service": "AlleAI"
+        } 
+
+@router.get("/test")
+async def test_ai():
+    """Simple test endpoint to verify AI service is working"""
+    try:
+        if not alleai_service.is_available():
+            return {
+                "status": "error",
+                "message": "AlleAI service not available",
+                "api_key_configured": bool(alleai_service.api_key)
+            }
+        
+        # Test with a simple prompt
+        result = await alleai_service.chat_with_ai(
+            user_message="Say 'Hello, AI is working!'",
+            models=["gpt-4o"]
+        )
+        
+        return {
+            "status": "success",
+            "message": "AI service is working",
+            "test_response": result,
+            "api_key_configured": bool(alleai_service.api_key)
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"AI service test failed: {str(e)}",
+            "api_key_configured": bool(alleai_service.api_key)
         } 

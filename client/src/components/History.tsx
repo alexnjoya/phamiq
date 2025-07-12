@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { getImageUrl } from '../lib/utils';
 
 interface HistoryProps {
   className?: string;
@@ -330,18 +331,10 @@ const History: React.FC<HistoryProps> = ({ className = '' }) => {
             Refresh
           </Button>
         </div>
-
         {/* Empty State */}
-        <Card className="border-dashed border-2 border-gray-300">
-          <CardContent className="p-12 text-center">
-            <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">No Analysis History</h3>
-            <p className="text-gray-500 mb-6">Your prediction history will appear here once you start analyzing images.</p>
-            <Button onClick={() => window.location.href = '/upload'} className="bg-teal-600 hover:bg-teal-700">
-              Start Analysis
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="text-center text-gray-500 py-12">
+          No analysis history found.
+        </div>
       </div>
     );
   }
@@ -356,265 +349,102 @@ const History: React.FC<HistoryProps> = ({ className = '' }) => {
         </div>
         <Button
           onClick={refreshHistory}
+          disabled={loading}
           variant="outline"
           size="sm"
           className="flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+      {/* Search and Filter */}
+      <div className="flex flex-col sm:flex-row items-center gap-4">
+        <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-md">
+          <Search className="w-4 h-4 text-gray-500" />
           <input
             type="text"
-            placeholder="Search by disease or crop type..."
+            placeholder="Search history..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+            className="bg-transparent outline-none flex-1"
           />
         </div>
         <select
           value={filterSeverity}
           onChange={(e) => setFilterSeverity(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+          className="bg-gray-100 p-2 rounded-md"
         >
           <option value="all">All Severities</option>
-          <option value="mild">Mild</option>
-          <option value="moderate">Moderate</option>
           <option value="severe">Severe</option>
+          <option value="moderate">Moderate</option>
+          <option value="mild">Mild</option>
         </select>
       </div>
       
-      {/* Results Count */}
-      <div className="flex items-center justify-between text-sm text-gray-500">
-        <span>{filteredHistory.length} of {history.length} results</span>
-        <span>Last updated: {new Date().toLocaleTimeString()}</span>
-      </div>
-                
-      {/* Expandable History List */}
-      <div className="space-y-3">
-        {filteredHistory.map((item) => {
-          const expanded = expandedId === item.id;
-          if (item.type === 'multispectral') {
-            // Multispectral card (clean, professional, only relevant fields)
-            return (
-              <Card
-                key={item.id}
-                className={`hover:shadow-lg transition-all duration-200 border-purple-200 cursor-pointer ${expanded ? 'ring-2 ring-purple-500' : ''}`}
-                onClick={() => setExpandedId(expanded ? null : item.id)}
-              >
-                <CardContent className="p-0">
-                  <div className="flex items-center px-6 py-4">
-                    <div className="mr-4 flex-shrink-0">
-                      {expanded ? (
-                        <ChevronDown className="w-6 h-6 text-purple-600" />
+      {/* History List */}
+      <div className="space-y-4">
+        {filteredHistory.map((item) => (
+          <Card key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 border-gray-200">
+            <div className="flex-1 flex items-center gap-4">
+              <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
+                {item.type === 'image' ? (
+                  <ImageIcon className="w-8 h-8 text-gray-600" />
                       ) : (
-                        <ChevronRight className="w-6 h-6 text-gray-400" />
+                  <Crop className="w-8 h-8 text-gray-600" />
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h3 className="font-semibold text-purple-800 text-lg truncate">
-                            {item.prediction}
-                          </h3>
-                          <Badge className="bg-purple-100 text-purple-800 border-purple-200 ml-2">Multispectral</Badge>
-                          <span className="flex items-center gap-1 text-sm text-gray-500">
-                            <Crop className="w-4 h-4" />
-                            {item.best_crop}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-6 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <ImageIcon className="w-4 h-4" />
-                            <span className="truncate max-w-xs">{item.filename}</span>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {historyService.formatDate(item.created_at)}
-                          </span>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">{item.type === 'image' ? item.disease : item.prediction}</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {item.type === 'image' ? (
+                    <>
+                      Crop: {item.crop_type}, Severity: {item.severity}
+                    </>
+                  ) : (
+                    <>
+                      Crop: {item.best_crop}, Confidence: {item.confidence * 100}%
+                    </>
+                  )}
+                </p>
+                <p className="text-sm text-gray-600 mt-1">
+                  Created: {new Date(item.created_at).toLocaleDateString()}
+                </p>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                  {/* Expandable Details */}
-                  <div
-                    className={`overflow-hidden transition-all duration-300 bg-purple-50 border-t border-purple-100 ${expanded ? 'max-h-96 py-4 px-8' : 'max-h-0 py-0 px-8'}`}
-                    style={{}}
-                  >
-                    {expanded && (
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <FileText className="w-4 h-4" />
-                          <span className="truncate">File: {item.filename}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <Clock className="w-4 h-4" />
-                          <span>Created: {historyService.formatDate(item.created_at)}</span>
-                        </div>
-                        <div className="flex gap-2 mt-2">
-                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => handleViewDetails(item)}>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => handleViewDetails(item)}
+                className="flex items-center gap-1"
+              >
                             <Eye className="w-4 h-4" />
                             View Details
                           </Button>
-                          <Button variant="outline" size="sm" className="flex items-center gap-1">
-                            <Download className="w-4 h-4" />
-                            Export
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          } else if (item.type === 'image') {
-            // Image card rendering
-            return (
-              <Card
-                key={item.id}
-                className={`hover:shadow-lg transition-all duration-200 border-gray-200 cursor-pointer ${expanded ? 'ring-2 ring-green-500' : ''}`}
-                onClick={() => setExpandedId(expanded ? null : item.id)}
-              >
-                <CardContent className="p-0">
-                  <div className="flex items-center px-6 py-4">
-                    {/* Chevron */}
-                    <div className="mr-4 flex-shrink-0">
-                      {expanded ? (
-                        <ChevronDown className="w-6 h-6 text-green-600" />
-                      ) : (
-                        <ChevronRight className="w-6 h-6 text-gray-400" />
-                      )}
-                    </div>
-                    {/* Main Info */}
-                    <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h3 className="font-semibold text-green-800 text-lg truncate">
-                            {item.disease}
-                          </h3>
-                          <Badge className={`ml-2 ${getSeverityColor(item.severity)} border`}>{item.severity}</Badge>
-                          {item.is_multispectral && (
-                            <Badge className="bg-purple-100 text-purple-800 border-purple-200 ml-2">Multispectral</Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-6 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <ImageIcon className="w-4 h-4" />
-                            <span className="truncate max-w-xs">{item.filename}</span>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
-                            {historyService.formatDate(item.created_at)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 ml-4">
-                        {/* Chat Button */}
                         <Button
-                          onClick={(e) => handleChatClick(e, item)}
                           variant="outline"
                           size="sm"
-                          className="flex items-center gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          <span className="hidden sm:inline">Chat</span>
-                        </Button>
-                        {/* Confidence Score */}
-                        <div className="flex flex-col items-end">
-                          <div className={`text-3xl font-bold ${getConfidenceColor(item.confidence)}`}>{(item.confidence * 100).toFixed(0)}%</div>
-                          <div className="text-xs text-gray-500">Confidence</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Expandable Details */}
-                  <div
-                    className={`overflow-hidden transition-all duration-300 bg-green-50 border-t border-green-100 ${expanded ? 'max-h-96 py-4 px-8' : 'max-h-0 py-0 px-8'}`}
-                    style={{}}
-                  >
-                    {expanded && (
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <FileText className="w-4 h-4" />
-                          <span className="truncate">File: {item.filename}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <Bot className="w-4 h-4" />
-                          <span>LLM Recommendations: <span className="font-medium">{(item as any).recommendations ? 'Cached' : 'Available (regenerated on view)'}</span></span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <Clock className="w-4 h-4" />
-                          <span>Created: {historyService.formatDate(item.created_at)}</span>
-                        </div>
-                        {/* Action Buttons */}
-                        <div className="flex gap-2 mt-2">
-                          <Button 
                             onClick={(e) => handleChatClick(e, item)}
-                            variant="outline" 
-                            size="sm" 
-                            className="flex items-center gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+                className="flex items-center gap-1"
                           >
                             <MessageCircle className="w-4 h-4" />
-                            Chat with AI
-                          </Button>
-                          <Button variant="outline" size="sm" className="flex items-center gap-1" onClick={() => handleViewDetails(item)}>
-                            <Eye className="w-4 h-4" />
-                            View Details
-                          </Button>
-                          <Button variant="outline" size="sm" className="flex items-center gap-1">
-                            <Download className="w-4 h-4" />
-                            Export
+                Chat
                           </Button>
                           <Button 
-                            onClick={(e) => handleDeleteHistory(e, item)}
                             variant="outline" 
                             size="sm" 
-                            className="flex items-center gap-1 text-red-600 border-red-200 hover:bg-red-50"
+                onClick={(e) => handleDeleteHistory(e, item)}
+                className="flex items-center gap-1 text-red-600 hover:text-red-700"
                           >
                             <Trash2 className="w-4 h-4" />
                             Delete
                           </Button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
               </Card>
-            );
-          }
-          return null;
-        })}
+        ))}
       </div>
-      
-      {/* Load More */}
-      {history.length >= 20 && (
-        <div className="text-center">
-          <Button
-            onClick={() => historyService.getPredictionHistory(50).then(data => setHistory(data as HistoryListItem[]))}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <TrendingUp className="w-4 h-4" />
-            Load More History
-          </Button>
-        </div>
-      )}
-
-      {/* No Results */}
-      {filteredHistory.length === 0 && history.length > 0 && (
-        <Card className="border-dashed border-2 border-gray-300">
-          <CardContent className="p-8 text-center">
-            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-600 mb-2">No Results Found</h3>
-            <p className="text-gray-500">Try adjusting your search or filter criteria.</p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

@@ -53,7 +53,10 @@ class UserService {
     try {
       const response = await fetch(`${API_BASE_URL}/users/me`, {
         method: 'GET',
-        headers: this.getAuthHeaders(),
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
       });
 
       if (!response.ok) {

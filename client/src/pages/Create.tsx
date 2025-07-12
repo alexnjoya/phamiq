@@ -4,6 +4,7 @@ import { UploadCloud, FileText, Info, Sparkles, Image as ImageIcon, X } from 'lu
 import { generateTitle, generateDescription, generateImage } from '../api/aiService';
 import { discoveryService } from '../api/discoveryService';
 import { useNavigate } from 'react-router-dom';
+import { getImageUrl } from '../lib/utils';
 
 const CreateDiscovery: React.FC = () => {
   const [title, setTitle] = useState('');
@@ -118,7 +119,10 @@ const CreateDiscovery: React.FC = () => {
         setAiResult(result);
       } else if (aiModal === 'image') {
         const url = await generateImage(aiPrompt, selectedModel);
-        setAiImageUrl(url);
+        console.log('AI Image URL returned from backend:', url); // Debug log
+        console.log('URL type:', typeof url);
+        console.log('URL starts with /ai/proxy-image?', url?.startsWith('/ai/proxy-image?'));
+        setAiImageUrl(url); // This should be the proxy URL from backend
       }
     } catch (err) {
       setAiResult('Error generating with AI');
@@ -264,11 +268,25 @@ const CreateDiscovery: React.FC = () => {
                   onChange={handleFileChange}
                 />
                 {(filePreview || aiImageUrl) && (
+                  <>
                   <img
-                    src={(filePreview || (aiImageUrl && (aiImageUrl.startsWith('http') ? `${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}/ai/proxy-image?url=${encodeURIComponent(aiImageUrl)}` : aiImageUrl)))}
+                      src={getImageUrl(filePreview || aiImageUrl)}
                     alt="Preview"
                     className="rounded-lg shadow max-h-40 object-contain border border-gray-200 mt-4"
-                  />
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "/placeholder.svg";
+                        // Show URL when image fails to load
+                        const urlDisplay = document.getElementById('image-url-display');
+                        if (urlDisplay) {
+                          urlDisplay.style.display = 'block';
+                          urlDisplay.innerHTML = `Failed to load image. URL: ${getImageUrl(filePreview || aiImageUrl)}`;
+                        }
+                      }}
+                    />
+                    <div id="image-url-display" className="mt-2 text-xs text-gray-500 break-all">
+                      Image URL: {getImageUrl(filePreview || aiImageUrl)}
+                    </div>
+                  </>
                 )}
               </label>
               {fileName && (
@@ -345,15 +363,17 @@ const CreateDiscovery: React.FC = () => {
                 {aiImageUrl && aiModal === 'image' && (
                   <div className="mt-3 flex flex-col items-center">
                     <img
-                      src={aiImageUrl.startsWith('http') ? `${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}/ai/proxy-image?url=${encodeURIComponent(aiImageUrl)}` : aiImageUrl}
+                      src={getImageUrl(aiImageUrl)}
                       alt="AI Generated"
                       className="rounded-lg shadow max-h-48 object-contain border border-gray-200"
-                      crossOrigin="anonymous"
                       onError={e => {
-                        (e.target as HTMLImageElement).src = "https://placehold.co/400x250/png?text=No+Image+Available";
+                        (e.target as HTMLImageElement).src = "/placeholder.svg";
                       }}
                     />
                     <span className="text-xs text-gray-500 mt-1">AI Generated Image Preview</span>
+                    <div className="mt-2 text-xs text-gray-500 break-all max-w-full">
+                      Image URL: {getImageUrl(aiImageUrl)}
+                    </div>
                   </div>
                 )}
                 {/* Accept AI result button */}

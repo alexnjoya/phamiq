@@ -19,6 +19,7 @@ import {
   Copy,
 } from "lucide-react";
 import SidebarLayout from '../components/SidebarLayout';
+import { getImageUrl } from '../lib/utils';
 
 interface TreatmentProtocols {
   organic: string;
@@ -406,9 +407,12 @@ const Results = () => {
                 <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
                   <div className="relative flex-shrink-0">
                     <img
-                      src={result.imageUrl}
+                      src={getImageUrl(result.imageUrl)}
                       alt="Analyzed crop"
                       className="w-24 h-24 lg:w-32 lg:h-32 object-cover rounded-xl border-2 border-gray-200"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "/placeholder.svg";
+                      }}
                     />
                     <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full text-xs font-medium bg-white border border-gray-200 shadow-sm">
                       {result.cropType}

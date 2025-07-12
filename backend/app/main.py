@@ -112,6 +112,43 @@ async def global_exception_handler(request, exc):
 async def root():
     return {"message": "Phamiq Crop Disease Classification API", "version": settings.API_VERSION}
 
+@app.get("/test-alleai")
+async def test_alleai():
+    """Test AlleAI connection with a simple request"""
+    try:
+        if not alleai_service.is_available():
+            return {
+                "status": "error",
+                "message": "AlleAI service not available",
+                "api_key_configured": bool(alleai_service.api_key),
+                "api_key_preview": alleai_service.api_key[:10] + "..." if alleai_service.api_key else "None"
+            }
+        
+        # Test with a simple request
+        test_message = "Hello, this is a test. Please respond with 'Test successful' if you can read this."
+        
+        response = await alleai_service.chat_with_ai(
+            user_message=test_message,
+            conversation_history=[],
+            models=["gpt-4o"]
+        )
+        
+        return {
+            "status": "success",
+            "message": "AlleAI connection test successful",
+            "response": response[:100] + "..." if len(response) > 100 else response,
+            "api_key_configured": bool(alleai_service.api_key),
+            "api_key_preview": alleai_service.api_key[:10] + "..." if alleai_service.api_key else "None"
+        }
+    except Exception as e:
+        logger.error(f"AlleAI test error: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"AlleAI test failed: {str(e)}",
+            "api_key_configured": bool(alleai_service.api_key),
+            "api_key_preview": alleai_service.api_key[:10] + "..." if alleai_service.api_key else "None"
+        }
+
 @app.get("/alleai-status")
 async def alleai_status():
     """Check AlleAI service status"""
@@ -119,10 +156,21 @@ async def alleai_status():
         is_available = alleai_service.is_available()
         api_key_configured = bool(alleai_service.api_key)
         
+        # Test the connection if available
+        connection_status = "unknown"
+        if is_available:
+            try:
+                connection_ok = await alleai_service.test_connection()
+                connection_status = "connected" if connection_ok else "failed"
+            except Exception as e:
+                connection_status = f"error: {str(e)}"
+        
         return {
             "alleai_available": is_available,
             "api_key_configured": api_key_configured,
             "api_key_length": len(alleai_service.api_key) if alleai_service.api_key else 0,
+            "api_key_preview": alleai_service.api_key[:10] + "..." if alleai_service.api_key else "None",
+            "connection_status": connection_status,
             "models": alleai_service.get_available_models() if is_available else [],
             "message": "AlleAI service is ready" if is_available else "AlleAI service not configured"
         }
